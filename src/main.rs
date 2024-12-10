@@ -15,6 +15,9 @@ enum SourceType {
 /// Handles reading content from different source types
 struct SourceContentReader {
     path: String,
+    location: Option<PathBuf>,
+    source_type: SourceType,
+    temp_dir: Option<TempDir>,
 }
 
 impl SourceContentReader {

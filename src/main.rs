@@ -22,26 +22,25 @@ struct SourceContentReader {
 
 impl SourceContentReader {
     /// Create a new SourceContentReader
-    fn new(path: &str) -> Self {
-        SourceContentReader {
+    fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut scr = SourceContentReader {
             path: path.to_string(),
-        }
-    }
-
-    /// Identify the type of source
-    fn identify_source(&self) -> SourceType {
-        // First, check if it's a local directory
-        if self.is_local_directory() {
-            return SourceType::LocalDirectory;
+            location: None,
+            source_type: SourceType::Unknown,
+            temp_dir: None,
+        };
+        if scr.is_local_directory() {
+            scr.location = PathBuf::from_str(&scr.path).ok();
+            scr.source_type = SourceType::LocalDirectory;
         }
 
         // Then check if it's a git repository URL
-        if self.is_git_repository() {
-            return SourceType::GitRepository;
+        if scr.is_git_repository() {
+            scr.setup_git_repository()?;
+            scr.source_type = SourceType::GitRepository;
         }
 
-        // If neither, return Unknown
-        SourceType::Unknown
+        Ok(scr)
     }
 
     /// Check if the path is a local directory

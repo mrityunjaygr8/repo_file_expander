@@ -9,8 +9,10 @@
   env.GREET = "devenv";
 
   # https://devenv.sh/packages/
-  packages = [
-    pkgs.openssl
+  packages = with pkgs; [
+    openssl
+    lazygit
+    git
   ];
 
   # https://devenv.sh/languages/

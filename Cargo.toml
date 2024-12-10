@@ -1,0 +1,9 @@
+[package]
+name = "repo_file_expander"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+url = "2.5.0"
+git2 = "0.16"
+tempfile = "3.3"

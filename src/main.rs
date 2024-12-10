@@ -2,6 +2,8 @@ use git2::Repository;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use tempfile::TempDir;
 use url::Url;
 
 /// Represents different types of input sources
@@ -83,7 +85,7 @@ impl SourceContentReader {
 
     /// Read file from local directory
     fn read_local_file(&self, filename: &str) -> Result<String, io::Error> {
-        let file_path = Path::new(&self.path).join(filename);
+        let file_path = self.location.as_ref().unwrap().join(filename);
 
         // Open the file
         let mut file = File::open(file_path)?;
@@ -95,6 +97,7 @@ impl SourceContentReader {
         Ok(contents)
     }
 
+    fn setup_git_repository(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         // Temporary directory for cloning if it's a remote repository
         let repo_path = if self.is_local_directory() {
@@ -108,34 +111,10 @@ impl SourceContentReader {
             Repository::clone(&self.path, &repo_path)?;
             repo_path
         };
+        self.location = Some(repo_path);
+        self.temp_dir = Some(temp_dir);
+        Ok(())
     }
-
-    // /// Check if a specific file exists
-    // fn file_exists(&self, filename: &str) -> bool {
-    //     match self.identify_source() {
-    //         SourceType::LocalDirectory => Path::new(&self.path).join(filename).exists(),
-    //         SourceType::GitRepository => {
-    //             println!("=======  here  =============");
-    //             // For git repository, check if file exists in the repository
-    //             let repo_path = if self.is_local_directory() {
-    //                 // If it's a local git repository, use the existing path
-    //                 PathBuf::from(&self.path)
-    //             } else {
-    //                 // Clone remote repository to a temporary directory
-    //                 let temp_dir = tempfile::tempdir()?;
-    //                 let repo_path = temp_dir.path().to_path_buf();
-    //
-    //                 // Clone the repository
-    //                 Repository::clone(&self.path, &repo_path)?;
-    //
-    //                 repo_path
-    //             };
-    //
-    //             repo_path.join(filename).exists()
-    //         }
-    //         SourceType::Unknown => false,
-    //     }
-    // }
 }
 
 /// Demonstrate the usage of SourceContentReader
@@ -144,7 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_sources = vec![
         "/home/mgr8/stuff/rust/my-redis/",        // Local git repository
         "https://github.com/mrityunjaygr8/guzei", // Remote git repository
-        "../../oss/devenv/",                      // Local git repository
+        "../../golang/guzei",                     // Local git repository
         "invalid/path",                           // Unknown source
     ];
 
@@ -154,11 +133,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for source in test_sources {
         println!("\nAnalyzing source: {}", source);
 
-        let reader = SourceContentReader::new(source);
+        let reader = SourceContentReader::new(source).unwrap();
 
         // Identify source type
-        let source_type = reader.identify_source();
-        println!("Source Type: {:?}", source_type);
+        println!("Source Type: {:?}", reader.source_type);
 
         // Try to read file contents
         match reader.read_file_contents(target_file) {

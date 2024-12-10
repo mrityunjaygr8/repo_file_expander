@@ -72,14 +72,10 @@ impl SourceContentReader {
 
     /// Read contents of a specific file based on source type
     fn read_file_contents(&self, filename: &str) -> Result<String, Box<dyn std::error::Error>> {
-        match self.identify_source() {
-            SourceType::LocalDirectory => {
+        match self.source_type {
+            SourceType::LocalDirectory | SourceType::GitRepository => {
                 // Read from local directory
                 Ok(self.read_local_file(filename)?)
-            }
-            SourceType::GitRepository => {
-                // Attempt to read from local git repository or clone remote repository
-                self.read_git_repository_file(filename)
             }
             SourceType::Unknown => Err("Unable to identify source type".into()),
         }
@@ -99,11 +95,6 @@ impl SourceContentReader {
         Ok(contents)
     }
 
-    /// Read file from git repository (local or remote)
-    fn read_git_repository_file(
-        &self,
-        filename: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         // Temporary directory for cloning if it's a remote repository
         let repo_path = if self.is_local_directory() {
@@ -117,16 +108,6 @@ impl SourceContentReader {
             Repository::clone(&self.path, &repo_path)?;
             repo_path
         };
-
-        // Construct full file path
-        let file_path = repo_path.join(filename);
-
-        // Open and read the file
-        let mut file = File::open(file_path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-
-        Ok(contents)
     }
 
     // /// Check if a specific file exists

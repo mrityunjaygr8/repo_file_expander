@@ -1,152 +1,50 @@
-use git2::Repository;
-use std::fs::File;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use tempfile::TempDir;
-use url::Url;
+use clap::crate_version;
+use cli::Commands;
 
-/// Represents different types of input sources
-#[derive(Debug, PartialEq)]
-enum SourceType {
-    LocalDirectory,
-    GitRepository,
-    Unknown,
-}
-
-/// Handles reading content from different source types
-struct SourceContentReader {
-    path: String,
-    location: Option<PathBuf>,
-    source_type: SourceType,
-    temp_dir: Option<TempDir>,
-}
-
-impl SourceContentReader {
-    /// Create a new SourceContentReader
-    fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut scr = SourceContentReader {
-            path: path.to_string(),
-            location: None,
-            source_type: SourceType::Unknown,
-            temp_dir: None,
-        };
-        if scr.is_local_directory() {
-            scr.location = PathBuf::from_str(&scr.path).ok();
-            scr.source_type = SourceType::LocalDirectory;
-        }
-
-        // Then check if it's a git repository URL
-        if scr.is_git_repository() {
-            scr.setup_git_repository()?;
-            scr.source_type = SourceType::GitRepository;
-        }
-
-        Ok(scr)
-    }
-
-    /// Check if the path is a local directory
-    fn is_local_directory(&self) -> bool {
-        let path = Path::new(&self.path);
-        path.exists() && path.is_dir()
-    }
-
-    /// Check if the path is a git repository URL or local git repository
-    fn is_git_repository(&self) -> bool {
-        // Check if it's a remote git URL
-        if let Ok(url) = Url::parse(&self.path) {
-            return self.validate_git_url(&url);
-        }
-
-        // Check if it's a local git repository
-        let path = Path::new(&self.path);
-        path.exists() && path.join(".git").exists()
-    }
-
-    /// Validate git repository URL
-    fn validate_git_url(&self, url: &Url) -> bool {
-        let git_hosts = ["github.com", "gitlab.com", "bitbucket.org"];
-
-        url.scheme() == "https"
-            && git_hosts.contains(&url.host_str().unwrap_or(""))
-            && (url.path().ends_with(".git") || url.path().contains("/"))
-    }
-
-    /// Read contents of a specific file based on source type
-    fn read_file_contents(&self, filename: &str) -> Result<String, Box<dyn std::error::Error>> {
-        match self.source_type {
-            SourceType::LocalDirectory | SourceType::GitRepository => {
-                // Read from local directory
-                Ok(self.read_local_file(filename)?)
-            }
-            SourceType::Unknown => Err("Unable to identify source type".into()),
-        }
-    }
-
-    /// Read file from local directory
-    fn read_local_file(&self, filename: &str) -> Result<String, io::Error> {
-        let file_path = self.location.as_ref().unwrap().join(filename);
-
-        // Open the file
-        let mut file = File::open(file_path)?;
-
-        // Read contents to string
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-
-        Ok(contents)
-    }
-
-    fn setup_git_repository(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        // Temporary directory for cloning if it's a remote repository
-        let repo_path = if self.is_local_directory() {
-            // If it's a local git repository, use the existing path
-            PathBuf::from(&self.path)
-        } else {
-            // Clone remote repository to a temporary directory
-            let repo_path = temp_dir.path().to_path_buf();
-
-            // Clone the repository
-            Repository::clone(&self.path, &repo_path)?;
-            repo_path
-        };
-        self.location = Some(repo_path);
-        self.temp_dir = Some(temp_dir);
-        Ok(())
-    }
-}
+mod cli;
+mod stuff;
 
 /// Demonstrate the usage of SourceContentReader
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test cases for different source types
-    let test_sources = vec![
-        "/home/mgr8/stuff/rust/my-redis/",        // Local git repository
-        "https://github.com/mrityunjaygr8/guzei", // Remote git repository
-        "../../golang/guzei",                     // Local git repository
-        "invalid/path",                           // Unknown source
-    ];
+    // let test_sources = vec![
+    //     "/home/mgr8/stuff/rust/my-redis/",        // Local git repository
+    //     "https://github.com/mrityunjaygr8/guzei", // Remote git repository
+    //     "../../golang/guzei",                     // Local git repository
+    //     "invalid/path",                           // Unknown source
+    // ];
 
-    // File to search for in each source
-    let target_file = "devenv.nix";
+    let cli = cli::Cli::parse_and_resolve_options();
 
-    for source in test_sources {
-        println!("\nAnalyzing source: {}", source);
+    let print_version = || {
+        println!("rfe {} ", crate_version!());
+        Ok(())
+    };
 
-        let reader = SourceContentReader::new(source).unwrap();
+    let command = match cli.command {
+        None => return print_version(),
+        Some(cmd) => cmd,
+    };
 
-        // Identify source type
-        println!("Source Type: {:?}", reader.source_type);
+    match command {
+        Commands::Init { target, source } => {
+            println!("target: {:?}, source: {:?}", target, source);
+            let target_file = "devenv.nix";
 
-        // Try to read file contents
-        match reader.read_file_contents(target_file) {
-            Ok(contents) => {
-                println!("File contents (first 200 chars):");
-                println!("{}", &contents[..contents.len().min(200)]);
+            let reader = stuff::SourceContentReader::new(source.unwrap().as_str()).unwrap();
+
+            // Try to read file contents
+            match reader.read_file_contents(target_file) {
+                Ok(contents) => {
+                    println!("File contents (first 200 chars):");
+                    println!("{}", &contents[..contents.len().min(200)]);
+                }
+                Err(e) => println!("Error reading file: {}", e),
             }
-            Err(e) => println!("Error reading file: {}", e),
         }
     }
+
+    // // File to search for in each source
 
     Ok(())
 }
